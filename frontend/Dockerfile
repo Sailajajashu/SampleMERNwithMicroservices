@@ -3,13 +3,13 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy dependency files
+# Copy package files first
 COPY package.json package-lock.json ./
 
-# Install dependencies
+# Install all dependencies
 RUN npm ci
 
-# Copy source code
+# Copy application source
 COPY . .
 
 # Build React application
@@ -19,14 +19,14 @@ RUN npm run build
 # Stage 2: Serve React application using Nginx
 FROM nginx:alpine
 
-# Remove default Nginx files
+# Remove default nginx content
 RUN rm -rf /usr/share/nginx/html/*
 
-# Copy React build files
+# Copy React production build
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Expose Nginx port
+# Expose HTTP port
 EXPOSE 80
 
-# Start Nginx
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
