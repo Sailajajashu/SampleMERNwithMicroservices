@@ -1,4 +1,4 @@
-```python
+
 import os
 import joblib
 import pandas as pd
@@ -225,4 +225,3 @@ with mlflow.start_run(
 
 print("")
 print("Training completed successfully.")
-```
