@@ -1,4 +1,4 @@
-```python
+
 import pandas as pd
 import joblib
 
@@ -174,4 +174,3 @@ def evaluate():
 
 if __name__ == "__main__":
     evaluate()
-```
