@@ -1,46 +1,12 @@
-import pandas as pd
-import joblib
+import mlflow
+import mlflow.sklearn
 
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+# MLflow configuration
+mlflow.set_tracking_uri("http://localhost:5000")
+mlflow.set_experiment("5G-Congestion-Prediction")
 
-
-INPUT_FILE = "data/features.csv"
-MODEL_FILE = "models/congestion_model.pkl"
-
-
-def train_model():
-
-    print("Loading features...")
-
-    df = pd.read_csv(INPUT_FILE)
-
-    # Input features
-    X = df[
-        [
-            "users",
-            "prb_utilization",
-            "latency",
-            "packet_loss",
-            "users_prb_ratio",
-            "latency_packet_loss"
-        ]
-    ]
-
-    # Target
-    y = df["congestion"]
-
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.30,
-        random_state=42,
-        stratify=y
-    )
-
-    print(f"Training records: {len(X_train)}")
-    print(f"Testing records: {len(X_test)}")
+# Start MLflow run
+with mlflow.start_run():
 
     # Create model
     model = RandomForestClassifier(
@@ -48,14 +14,24 @@ def train_model():
         random_state=42
     )
 
-    # Train
+    # Train model
     model.fit(X_train, y_train)
 
-    # Save model
-    joblib.dump(model, MODEL_FILE)
+    # Save model locally
+    joblib.dump(
+        model,
+        "models/congestion_model.pkl"
+    )
 
-    print(f"Model saved to: {MODEL_FILE}")
+    # Log parameters
+    mlflow.log_param("algorithm", "RandomForestClassifier")
+    mlflow.log_param("n_estimators", 100)
+    mlflow.log_param("random_state", 42)
+    mlflow.log_param("test_size", 0.2)
 
-
-if __name__ == "__main__":
-    train_model()
+    # Register model
+    mlflow.sklearn.log_model(
+        sk_model=model,
+        artifact_path="model",
+        registered_model_name="5G-Congestion-Model"
+    )
