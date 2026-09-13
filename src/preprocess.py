@@ -2,100 +2,103 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-import joblib
 
 
-FEATURES = [
+REQUIRED_COLUMNS = [
+    "cell_id",
     "users",
     "prb_utilization",
     "latency",
     "packet_loss",
+    "congestion",
 ]
 
-TARGET = "congestion"
 
-
-def preprocess(input_file, output_dir):
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+def validate_data(input_file):
+    print(f"Validating dataset: {input_file}")
 
     df = pd.read_csv(input_file)
 
-    print(f"Input rows: {len(df)}")
+    print(f"Rows: {len(df)}")
+    print(f"Columns: {list(df.columns)}")
 
-    # Remove duplicate rows
-    df = df.drop_duplicates()
+    # Check columns
+    missing_columns = [
+        column for column in REQUIRED_COLUMNS
+        if column not in df.columns
+    ]
 
-    # Remove rows containing required null values
-    df = df.dropna(
-        subset=FEATURES + [TARGET]
-    )
+    if missing_columns:
+        raise ValueError(
+            f"Missing required columns: {missing_columns}"
+        )
 
-    X = df[FEATURES]
-    y = df[TARGET]
+    # Check empty dataset
+    if df.empty:
+        raise ValueError("Dataset is empty")
 
-    # Train/test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.20,
-        random_state=42,
-        stratify=y,
-    )
+    # Check null values
+    null_counts = df[REQUIRED_COLUMNS].isnull().sum()
 
-    # Scale numerical features
-    scaler = StandardScaler()
+    if null_counts.sum() > 0:
+        print("Null values found:")
+        print(null_counts)
+        raise ValueError("Dataset contains null values")
 
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    # Check duplicates
+    duplicates = df.duplicated().sum()
 
-    # Convert back to DataFrame
-    X_train_scaled = pd.DataFrame(
-        X_train_scaled,
-        columns=FEATURES,
-    )
+    if duplicates > 0:
+        raise ValueError(
+            f"Dataset contains {duplicates} duplicate rows"
+        )
 
-    X_test_scaled = pd.DataFrame(
-        X_test_scaled,
-        columns=FEATURES,
-    )
+    # Range validation
+    if (df["users"] < 0).any():
+        raise ValueError("Users cannot be negative")
 
-    # Save processed datasets
-    train_data = X_train_scaled.copy()
-    train_data[TARGET] = y_train.reset_index(drop=True)
+    if not df["prb_utilization"].between(0, 100).all():
+        raise ValueError(
+            "PRB utilization must be between 0 and 100"
+        )
 
-    test_data = X_test_scaled.copy()
-    test_data[TARGET] = y_test.reset_index(drop=True)
+    if (df["latency"] < 0).any():
+        raise ValueError("Latency cannot be negative")
 
-    train_file = output_dir / "train.csv"
-    test_file = output_dir / "test.csv"
-    scaler_file = output_dir / "scaler.pkl"
+    if not df["packet_loss"].between(0, 100).all():
+        raise ValueError(
+            "Packet loss must be between 0 and 100"
+        )
 
-    train_data.to_csv(train_file, index=False)
-    test_data.to_csv(test_file, index=False)
+    if not df["congestion"].isin([0, 1]).all():
+        raise ValueError(
+            "Congestion must contain only 0 or 1"
+        )
 
-    joblib.dump(scaler, scaler_file)
+    # Target distribution
+    print("\nTarget distribution:")
+    print(df["congestion"].value_counts())
 
-    print(f"Saved: {train_file}")
-    print(f"Saved: {test_file}")
-    print(f"Saved: {scaler_file}")
-
-    print("Preprocessing completed successfully")
+    print("\nData validation PASSED")
 
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         print(
-            "Usage: python src/preprocess.py "
-            "<input_file> <output_dir>"
+            "Usage: python src/data_validation.py "
+            "data/raw/5g_metrics.csv"
         )
         sys.exit(1)
 
-    preprocess(
-        sys.argv[1],
-        sys.argv[2],
-    )
+    input_file = Path(sys.argv[1])
+
+    if not input_file.exists():
+        print(f"File not found: {input_file}")
+        sys.exit(1)
+
+    try:
+        validate_data(input_file)
+    except Exception as exc:
+        print(f"DATA VALIDATION FAILED: {exc}")
+        sys.exit(1)
