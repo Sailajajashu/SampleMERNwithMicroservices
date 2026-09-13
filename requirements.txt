@@ -1,4 +1,8 @@
-pandas
-scikit-learn
-joblib
+fastapi
+uvicorn
 mlflow
+scikit-learn
+pandas
+prometheus-client
+pydantic
+joblib
