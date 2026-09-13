@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: congestion-api
+  namespace: 5g-mlops
+spec:
+  type: ClusterIP
+  selector:
+    app: 5g-congestion-api
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8000
