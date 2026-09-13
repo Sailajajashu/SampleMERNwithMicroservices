@@ -1,176 +1,87 @@
 
-import pandas as pd
-import joblib
 
-from sklearn.model_selection import train_test_split
+import sys
+from pathlib import Path
+
+import joblib
+import pandas as pd
+
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
-    f1_score
+    f1_score,
 )
 
+FEATURES = [
+    "users",
+    "prb_utilization",
+    "latency",
+    "packet_loss",
+    "user_prb_interaction",
+    "latency_packet_loss",
+    "high_prb_flag",
+    "high_latency_flag",
+]
 
-def evaluate():
+TARGET = "congestion"
 
-    print("==========================================")
-    print("5G CONGESTION MODEL EVALUATION")
-    print("==========================================")
 
-    # ==================================================
-    # 1. LOAD FEATURE DATA
-    # ==================================================
+def evaluate(model_file, test_file, output_file, threshold=0.90):
 
-    print("Loading feature data...")
+    model = joblib.load(model_file)
 
-    df = pd.read_csv("data/features.csv")
+    df = pd.read_csv(test_file)
 
-    print(f"Total records: {len(df)}")
+    X = df[FEATURES]
+    y = df[TARGET]
 
-    # ==================================================
-    # 2. LOAD TRAINED MODEL
-    # ==================================================
+    predictions = model.predict(X)
 
-    print("Loading trained model...")
+    accuracy = accuracy_score(y, predictions)
+    precision = precision_score(y, predictions, zero_division=0)
+    recall = recall_score(y, predictions, zero_division=0)
+    f1 = f1_score(y, predictions, zero_division=0)
 
-    model = joblib.load(
-        "models/congestion_model.pkl"
-    )
+    print("=" * 60)
+    print("MODEL EVALUATION")
+    print("=" * 60)
 
-    print("Model loaded successfully.")
+    print(f"Accuracy : {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall   : {recall:.4f}")
+    print(f"F1       : {f1:.4f}")
 
-    # ==================================================
-    # 3. DEFINE FEATURES
-    # ==================================================
+    Path(output_file).write_text(f"{f1:.6f}\n")
 
-    features = [
-        "users",
-        "prb_utilization",
-        "latency",
-        "packet_loss",
-        "users_prb_ratio",
-        "latency_packet_loss"
-    ]
+    print()
+    print(f"F1 saved to {output_file}")
 
-    target = "congestion"
-
-    # Check required columns
-    required_columns = features + [target]
-
-    missing_columns = [
-        column
-        for column in required_columns
-        if column not in df.columns
-    ]
-
-    if missing_columns:
-
-        raise ValueError(
-            f"Missing required columns: {missing_columns}"
+    if f1 < threshold:
+        print(
+            f"QUALITY GATE FAILED: "
+            f"F1 {f1:.4f} < {threshold}"
         )
+        sys.exit(1)
 
-    # ==================================================
-    # 4. PREPARE DATA
-    # ==================================================
-
-    X = df[features]
-
-    y = df[target]
-
-    # ==================================================
-    # 5. SAME TRAIN/TEST SPLIT AS TRAIN.PY
-    # ==================================================
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        random_state=42,
-        stratify=y
+    print(
+        f"QUALITY GATE PASSED: "
+        f"F1 {f1:.4f} >= {threshold}"
     )
-
-    print("")
-    print(f"Training records : {len(X_train)}")
-    print(f"Testing records  : {len(X_test)}")
-
-    # ==================================================
-    # 6. PREDICT
-    # ==================================================
-
-    print("")
-    print("Generating predictions...")
-
-    predictions = model.predict(X_test)
-
-    # ==================================================
-    # 7. CALCULATE METRICS
-    # ==================================================
-
-    accuracy = accuracy_score(
-        y_test,
-        predictions
-    )
-
-    precision = precision_score(
-        y_test,
-        predictions,
-        zero_division=0
-    )
-
-    recall = recall_score(
-        y_test,
-        predictions,
-        zero_division=0
-    )
-
-    f1 = f1_score(
-        y_test,
-        predictions,
-        zero_division=0
-    )
-
-    # ==================================================
-    # 8. DISPLAY RESULTS
-    # ==================================================
-
-    print("")
-    print("==========================================")
-    print("MODEL EVALUATION RESULTS")
-    print("==========================================")
-
-    print(f"Accuracy  : {accuracy:.4f}")
-    print(f"Precision : {precision:.4f}")
-    print(f"Recall    : {recall:.4f}")
-    print(f"F1 Score  : {f1:.4f}")
-
-    print("==========================================")
-
-    # ==================================================
-    # 9. SAVE F1 SCORE FOR JENKINS
-    # ==================================================
-
-    print("")
-    print("Saving F1 score for Jenkins...")
-
-    with open("f1_score.txt", "w") as file:
-        file.write(str(f1))
-
-    print("F1 score saved successfully.")
-    print("File: f1_score.txt")
-
-    # ==================================================
-    # 10. DISPLAY QUALITY INFORMATION
-    # ==================================================
-
-    print("")
-    print("Model evaluation completed successfully.")
-
-    print("")
-    print("Jenkins will use f1_score.txt")
-    print("to perform the Model Quality Gate.")
-
-    print("==========================================")
 
 
 if __name__ == "__main__":
-    evaluate()
+
+    if len(sys.argv) != 5:
+        print(
+            "Usage: python src/evaluate.py "
+            "<model> <test> <output> <threshold>"
+        )
+        sys.exit(1)
+
+    evaluate(
+        sys.argv[1],
+        sys.argv[2],
+        sys.argv[3],
+        float(sys.argv[4]),
+    )
