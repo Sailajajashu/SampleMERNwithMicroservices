@@ -6,8 +6,8 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
-COPY data/ ./data/
-COPY models/ ./models/
+COPY src/predict.py ./src/predict.py
 
-CMD ["python", "src/predict.py"]
+EXPOSE 8000
+
+CMD ["uvicorn", "src.predict:app", "--host", "0.0.0.0", "--port", "8000"]
