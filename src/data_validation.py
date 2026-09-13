@@ -87,7 +87,7 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(
             "Usage: python src/data_validation.py "
-            "data/raw/5g_metrics.csv"
+            "/root/5g-mlops/data/raw/5g_metrics.csv"
         )
         sys.exit(1)
 
