@@ -1,45 +1,48 @@
+import sys
+from pathlib import Path
+
 import pandas as pd
 
 
-INPUT_FILE = "data/clean_data.csv"
-OUTPUT_FILE = "data/features.csv"
+TARGET = "congestion"
 
 
-def create_features():
+def engineer_features(input_file, output_file):
 
-    print("Creating ML features...")
+    df = pd.read_csv(input_file)
 
-    df = pd.read_csv(INPUT_FILE)
-
-    # Create useful telecom features
-
-    df["users_prb_ratio"] = (
-        df["users"] / df["prb_utilization"]
+    # Risk-oriented derived features
+    df["user_prb_interaction"] = (
+        df["users"] * df["prb_utilization"]
     )
 
     df["latency_packet_loss"] = (
         df["latency"] * df["packet_loss"]
     )
 
-    # Select final features
+    df["high_prb_flag"] = (
+        df["prb_utilization"] >= 80
+    ).astype(int)
 
-    features = df[
-        [
-            "users",
-            "prb_utilization",
-            "latency",
-            "packet_loss",
-            "users_prb_ratio",
-            "latency_packet_loss",
-            "congestion"
-        ]
-    ]
+    df["high_latency_flag"] = (
+        df["latency"] >= 50
+    ).astype(int)
 
-    features.to_csv(OUTPUT_FILE, index=False)
+    df.to_csv(output_file, index=False)
 
-    print("Features created successfully.")
-    print(f"Saved to: {OUTPUT_FILE}")
+    print(f"Feature engineered dataset saved to {output_file}")
 
 
 if __name__ == "__main__":
-    create_features()
+
+    if len(sys.argv) != 3:
+        print(
+            "Usage: python src/feature_engineering.py "
+            "<input> <output>"
+        )
+        sys.exit(1)
+
+    engineer_features(
+        sys.argv[1],
+        sys.argv[2],
+    )
