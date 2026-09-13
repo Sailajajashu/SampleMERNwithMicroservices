@@ -1,66 +1,342 @@
-import joblib
-import pandas as pd
+import os
+import time
+
+import mlflow
+import mlflow.sklearn
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+from prometheus_client import (
+    Counter,
+    Histogram,
+    generate_latest,
+)
+from starlette.responses import Response
 
 
-MODEL_FILE = "models/congestion_model.pkl"
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+MODEL_NAME = os.getenv(
+    "MODEL_NAME",
+    "5G-Congestion-Model",
+)
+
+MODEL_ALIAS = os.getenv(
+    "MODEL_ALIAS",
+    "champion",
+)
+
+MLFLOW_TRACKING_URI = os.getenv(
+    "MLFLOW_TRACKING_URI",
+    "http://localhost:5000",
+)
 
 
-def predict_congestion():
+# ============================================================
+# MLFLOW CONFIGURATION
+# ============================================================
 
-    print("Loading trained model...")
+mlflow.set_tracking_uri(
+    MLFLOW_TRACKING_URI
+)
 
-    model = joblib.load(MODEL_FILE)
+MODEL_URI = (
+    f"models:/{MODEL_NAME}@{MODEL_ALIAS}"
+)
 
-    # New 5G network observation
-    data = pd.DataFrame([
-        {
-            "users": 1800,
-            "prb_utilization": 88,
-            "latency": 38,
-            "packet_loss": 1.0
-        }
-    ])
 
-    # Create same features used during training
+# ============================================================
+# LOAD CHAMPION MODEL FROM MLFLOW
+# ============================================================
 
-    data["users_prb_ratio"] = (
-        data["users"] / data["prb_utilization"]
+print("=" * 60)
+print("5G CONGESTION MODEL")
+print("=" * 60)
+
+print(
+    f"MLflow Tracking URI : "
+    f"{MLFLOW_TRACKING_URI}"
+)
+
+print(
+    f"Model Name          : "
+    f"{MODEL_NAME}"
+)
+
+print(
+    f"Model Alias         : "
+    f"{MODEL_ALIAS}"
+)
+
+print(
+    f"Model URI           : "
+    f"{MODEL_URI}"
+)
+
+print()
+print("Loading Champion model from MLflow...")
+
+
+try:
+
+    model = mlflow.sklearn.load_model(
+        MODEL_URI
     )
-
-    data["latency_packet_loss"] = (
-        data["latency"] * data["packet_loss"]
-    )
-
-    features = data[
-        [
-            "users",
-            "prb_utilization",
-            "latency",
-            "packet_loss",
-            "users_prb_ratio",
-            "latency_packet_loss"
-        ]
-    ]
-
-    prediction = model.predict(features)[0]
-
-    probability = model.predict_proba(features)[0][1]
-
-    print()
-    print("========== 5G PREDICTION ==========")
-
-    if prediction == 1:
-        print("Prediction: CONGESTION ⚠️")
-    else:
-        print("Prediction: NORMAL ✅")
 
     print(
-        f"Congestion probability: "
-        f"{probability:.2%}"
+        "Champion model loaded successfully"
     )
 
-    print("===================================")
+except Exception as error:
+
+    print()
+    print(
+        "ERROR: Failed to load Champion "
+        "model from MLflow"
+    )
+
+    print(
+        f"Reason: {error}"
+    )
+
+    raise
 
 
-if __name__ == "__main__":
-    predict_congestion()
+# ============================================================
+# FASTAPI APPLICATION
+# ============================================================
+
+app = FastAPI(
+    title="5G Congestion Prediction API",
+    description=(
+        "5G network congestion prediction "
+        "using MLflow Champion model"
+    ),
+    version="1.0.0",
+)
+
+
+# ============================================================
+# PROMETHEUS METRICS
+# ============================================================
+
+prediction_counter = Counter(
+    "prediction_requests_total",
+    "Total prediction requests",
+)
+
+
+prediction_latency = Histogram(
+    "prediction_request_duration_seconds",
+    "Prediction request duration",
+)
+
+
+prediction_congestion_counter = Counter(
+    "congestion_predictions_total",
+    "Total congestion predictions",
+)
+
+
+# ============================================================
+# REQUEST MODEL
+# ============================================================
+
+class PredictionRequest(BaseModel):
+
+    users: float
+
+    prb_utilization: float
+
+    latency: float
+
+    packet_loss: float
+
+
+# ============================================================
+# ROOT ENDPOINT
+# ============================================================
+
+@app.get("/")
+def root():
+
+    return {
+        "application": (
+            "5G Congestion Prediction API"
+        ),
+        "version": "1.0.0",
+        "model_name": MODEL_NAME,
+        "model_alias": MODEL_ALIAS,
+        "model_uri": MODEL_URI,
+        "status": "running",
+    }
+
+
+# ============================================================
+# HEALTH ENDPOINT
+# ============================================================
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "healthy",
+        "model_loaded": True,
+        "model_name": MODEL_NAME,
+        "model_alias": MODEL_ALIAS,
+    }
+
+
+# ============================================================
+# MODEL INFORMATION
+# ============================================================
+
+@app.get("/model")
+def model_info():
+
+    return {
+        "model_name": MODEL_NAME,
+        "model_alias": MODEL_ALIAS,
+        "model_uri": MODEL_URI,
+        "mlflow_tracking_uri": (
+            MLFLOW_TRACKING_URI
+        ),
+    }
+
+
+# ============================================================
+# PREDICTION ENDPOINT
+# ============================================================
+
+@app.post("/predict")
+def predict(
+    request: PredictionRequest,
+):
+
+    start_time = time.time()
+
+    prediction_counter.inc()
+
+    # --------------------------------------------------------
+    # Feature Engineering
+    # --------------------------------------------------------
+
+    user_prb_interaction = (
+        request.users
+        * request.prb_utilization
+    )
+
+    latency_packet_loss = (
+        request.latency
+        * request.packet_loss
+    )
+
+    high_prb_flag = int(
+        request.prb_utilization >= 80
+    )
+
+    high_latency_flag = int(
+        request.latency >= 50
+    )
+
+    features = [[
+
+        request.users,
+
+        request.prb_utilization,
+
+        request.latency,
+
+        request.packet_loss,
+
+        user_prb_interaction,
+
+        latency_packet_loss,
+
+        high_prb_flag,
+
+        high_latency_flag,
+
+    ]]
+
+    # --------------------------------------------------------
+    # Model Prediction
+    # --------------------------------------------------------
+
+    prediction = model.predict(
+        features
+    )[0]
+
+    # --------------------------------------------------------
+    # Prediction Probability
+    # --------------------------------------------------------
+
+    probability = None
+
+    if hasattr(
+        model,
+        "predict_proba",
+    ):
+
+        probability = float(
+            model.predict_proba(
+                features
+            )[0][1]
+        )
+
+    # --------------------------------------------------------
+    # Congestion Counter
+    # --------------------------------------------------------
+
+    if int(prediction) == 1:
+
+        prediction_congestion_counter.inc()
+
+    # --------------------------------------------------------
+    # Request Duration
+    # --------------------------------------------------------
+
+    duration = (
+        time.time() - start_time
+    )
+
+    prediction_latency.observe(
+        duration
+    )
+
+    # --------------------------------------------------------
+    # Response
+    # --------------------------------------------------------
+
+    return {
+
+        "congestion": int(
+            prediction
+        ),
+
+        "congested": bool(
+            prediction
+        ),
+
+        "probability": probability,
+
+        "model_name": MODEL_NAME,
+
+        "model_alias": MODEL_ALIAS,
+
+    }
+
+
+# ============================================================
+# PROMETHEUS METRICS
+# ============================================================
+
+@app.get("/metrics")
+def metrics():
+
+    return Response(
+        generate_latest(),
+        media_type="text/plain",
+    )
