@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) != 2:
         print(
-            "Usage: python src/data_validation.py "
+            "Usage: python src/preprocess.py"
             "data/5g_metrics.csv"
         )
         sys.exit(1)
