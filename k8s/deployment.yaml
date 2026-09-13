@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 5g-congestion-api
+  namespace: 5g-mlops
+
+spec:
+  replicas: 4
+
+  selector:
+    matchLabels:
+      app: 5g-congestion-api
+
+  template:
+    metadata:
+      labels:
+        app: 5g-congestion-api
+
+    spec:
+      containers:
+        - name: 5g-congestion-api
+
+          image: 5g-congestion-model:1.1
+
+          imagePullPolicy: Never
+
+          ports:
+            - containerPort: 8000
+
+          env:
+            # MLflow Kubernetes Service
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow-mlflow.mlflow.svc.cluster.local:5000"
+
+            # Registered model name
+            - name: MODEL_NAME
+              value: "5G-Congestion-Model"
+
+            # Always load Champion
+            - name: MODEL_ALIAS
+              value: "champion"
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # Model is downloaded during application startup.
+          # Give it enough time to load.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+
+          # Pod receives traffic only after model is loaded.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Restart container if application becomes unhealthy.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
