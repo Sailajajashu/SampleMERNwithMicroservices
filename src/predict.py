@@ -1,3 +1,4 @@
+```python
 import os
 import time
 
@@ -122,21 +123,35 @@ app = FastAPI(
 # PROMETHEUS METRICS
 # ============================================================
 
+# Total number of prediction requests
 prediction_counter = Counter(
     "prediction_requests_total",
     "Total prediction requests",
 )
 
 
+# Prediction request latency
 prediction_latency = Histogram(
     "prediction_request_duration_seconds",
     "Prediction request duration",
 )
 
 
-prediction_congestion_counter = Counter(
-    "congestion_predictions_total",
-    "Total congestion predictions",
+# ============================================================
+# MODEL PREDICTION DISTRIBUTION
+# ============================================================
+
+# Tracks how many predictions are 0 and 1
+#
+# Example Prometheus output:
+#
+# model_predictions_total{prediction="0"} 100
+# model_predictions_total{prediction="1"} 50
+#
+model_predictions_total = Counter(
+    "model_predictions_total",
+    "Total model predictions by prediction class",
+    ["prediction"],
 )
 
 
@@ -215,7 +230,15 @@ def predict(
     request: PredictionRequest,
 ):
 
+    # --------------------------------------------------------
+    # Start Timer
+    # --------------------------------------------------------
+
     start_time = time.time()
+
+    # --------------------------------------------------------
+    # Count Prediction Request
+    # --------------------------------------------------------
 
     prediction_counter.inc()
 
@@ -287,12 +310,16 @@ def predict(
         )
 
     # --------------------------------------------------------
-    # Congestion Counter
+    # MODEL PREDICTION DISTRIBUTION
     # --------------------------------------------------------
 
-    if int(prediction) == 1:
+    prediction_label = str(
+        int(prediction)
+    )
 
-        prediction_congestion_counter.inc()
+    model_predictions_total.labels(
+        prediction=prediction_label
+    ).inc()
 
     # --------------------------------------------------------
     # Request Duration
@@ -330,7 +357,7 @@ def predict(
 
 
 # ============================================================
-# PROMETHEUS METRICS
+# PROMETHEUS METRICS ENDPOINT
 # ============================================================
 
 @app.get("/metrics")
@@ -340,3 +367,4 @@ def metrics():
         generate_latest(),
         media_type="text/plain",
     )
+```
